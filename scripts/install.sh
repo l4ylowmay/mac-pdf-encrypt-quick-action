@@ -1,6 +1,10 @@
 #!/bin/sh
 set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+if ! [ -x /opt/homebrew/bin/qpdf ] && ! [ -x /usr/local/bin/qpdf ]; then
+    printf '%s\n' 'AES-256 加密需要 qpdf，请先运行 brew install qpdf。' >&2
+    exit 1
+fi
 mkdir -p "$HOME/Library/Services"
 for name in '批量加密PDF并覆盖.workflow' '批量解除PDF密码并覆盖.workflow'; do
     dest="$HOME/Library/Services/$name"

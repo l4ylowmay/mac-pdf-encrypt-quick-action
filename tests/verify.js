@@ -1,5 +1,5 @@
 // This final handler replaces the interactive entry point for isolated testing.
-function run(args) {
+function verifyEncryption(args) {
     var path = args[0] + '/sample.pdf';
     var pdf = $.PDFDocument.alloc.init;
     pdf.insertPageAtIndex($.PDFPage.alloc.init, 0);
@@ -22,4 +22,21 @@ function run(args) {
     var items = ObjC.deepUnwrap($.NSFileManager.defaultManager.contentsOfDirectoryAtPathError(args[0], null));
     if (items.some(function(p) { return p.indexOf('.pdf-encrypt-') === 0; })) throw Error('Leaked temporary PDF');
     return 'PASS: password, pages, skip, failure preservation, temporary cleanup';
+}
+
+function run(args) {
+    var result = verifyEncryption(args);
+    var p = args[0] + '/sample.pdf';
+    var before = $.NSData.dataWithContentsOfFile(p);
+    try { decryptPDF(p, 'wrong'); throw Error('Wrong password accepted'); }
+    catch (e) { if (e.message !== '密码错误，原文件未修改') throw e; }
+    if (!before.isEqualToData($.NSData.dataWithContentsOfFile(p))) throw Error('Wrong password modified original');
+    decryptPDF(p, 'test-only $`"123');
+    var read = $.PDFDocument.alloc.initWithURL($.NSURL.fileURLWithPath(p));
+    if (read.isEncrypted || read.isLocked || Number(read.pageCount) !== 1) throw Error('Decryption check failed');
+    before = $.NSData.dataWithContentsOfFile(p);
+    try { decryptPDF(p, 'anything'); throw Error('Expected unencrypted skip'); }
+    catch (e) { if (e.message !== '未加密，已跳过') throw e; }
+    if (!before.isEqualToData($.NSData.dataWithContentsOfFile(p))) throw Error('Unencrypted original changed');
+    return result + '\nPASS: decrypt, wrong password preserves original, unencrypted skip';
 }

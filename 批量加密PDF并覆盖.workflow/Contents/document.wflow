@@ -171,7 +171,7 @@ function run(input, parameters) {
 					<dict>
 						<key>default value</key>
 						<string>function run(input, parameters) {
-	
+
 	// Your script goes here
 
 	return input;

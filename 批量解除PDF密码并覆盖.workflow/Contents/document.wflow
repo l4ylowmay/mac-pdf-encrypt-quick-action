@@ -1,0 +1,230 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>AMApplicationBuild</key>
+	<string>540</string>
+	<key>AMApplicationVersion</key>
+	<string>2.10</string>
+	<key>AMDocumentVersion</key>
+	<string>2</string>
+	<key>actions</key>
+	<array>
+		<dict>
+			<key>action</key>
+			<dict>
+				<key>AMAccepts</key>
+				<dict>
+					<key>Container</key>
+					<string>List</string>
+					<key>Optional</key>
+					<true/>
+					<key>Types</key>
+					<array>
+						<string>com.apple.applescript.object</string>
+					</array>
+				</dict>
+				<key>AMActionVersion</key>
+				<string>1.0</string>
+				<key>AMApplication</key>
+				<array>
+					<string>自动操作</string>
+				</array>
+				<key>AMParameterProperties</key>
+				<dict>
+					<key>source</key>
+					<dict/>
+				</dict>
+				<key>AMProvides</key>
+				<dict>
+					<key>Container</key>
+					<string>List</string>
+					<key>Types</key>
+					<array>
+						<string>com.apple.applescript.object</string>
+					</array>
+				</dict>
+				<key>ActionBundlePath</key>
+				<string>/System/Library/Automator/Run JavaScript.action</string>
+				<key>ActionName</key>
+				<string>运行JavaScript</string>
+				<key>ActionParameters</key>
+				<dict>
+					<key>source</key>
+					<string>ObjC.import('Foundation');
+ObjC.import('PDFKit');
+ObjC.bindFunction('rename', ['int', ['string', 'string']]);
+
+function decryptPDF(path, password) {
+    var fm = $.NSFileManager.defaultManager;
+    var url = $.NSURL.fileURLWithPath(path);
+    var attrs = fm.attributesOfItemAtPathError(path, null);
+    if (!attrs || ObjC.unwrap(attrs.objectForKey($.NSFileType)) !== ObjC.unwrap($.NSFileTypeRegular))
+        throw new Error('不是普通文件（符号链接不会处理）');
+    var doc = $.PDFDocument.alloc.initWithURL(url);
+    if (!doc) throw new Error('无法读取 PDF');
+    if (!doc.isEncrypted) throw new Error('未加密，已跳过');
+    if (!doc.unlockWithPassword(password)) throw new Error('密码错误，原文件未修改');
+    var count = Number(doc.pageCount);
+    if (!count) throw new Error('PDF 没有页面');
+    // A new PDFDocument is required: writing the unlocked source retains encryption.
+    var unlocked = $.PDFDocument.alloc.init;
+    for (var page = 0; page &lt; count; page++) unlocked.insertPageAtIndex(doc.pageAtIndex(page), page);
+    if (doc.documentAttributes) unlocked.documentAttributes = doc.documentAttributes;
+    var tmp = ObjC.unwrap(url.URLByDeletingLastPathComponent.path) + '/.pdf-decrypt-' + ObjC.unwrap($.NSUUID.UUID.UUIDString) + '.pdf';
+    try {
+        if (!unlocked.writeToURL($.NSURL.fileURLWithPath(tmp)))
+            throw new Error('无法写入解密文件，请检查文件夹权限');
+        var check = $.PDFDocument.alloc.initWithURL($.NSURL.fileURLWithPath(tmp));
+        if (!check || check.isEncrypted || check.isLocked || Number(check.pageCount) !== count)
+            throw new Error('解密状态或页数验证失败');
+        var mode = $.NSMutableDictionary.alloc.init;
+        mode.setObjectForKey(attrs.objectForKey($.NSFilePosixPermissions), $.NSFilePosixPermissions);
+        if (!fm.setAttributesOfItemAtPathError(mode, tmp, null)) throw new Error('无法保留文件权限');
+        if ($.rename(tmp, path) !== 0) throw new Error('无法替换原文件，请检查文件夹权限');
+    } finally {
+        if (fm.fileExistsAtPath(tmp)) fm.removeItemAtPathError(tmp, null);
+    }
+}
+
+function run(input, parameters) {
+    var app = Application.currentApplication();
+    app.includeStandardAdditions = true;
+    var paths = [], seen = {};
+    for (var i = 0; i &lt; input.length; i++) {
+        var p = String(input[i]);
+        if (/^file:\/\//.test(p)) p = ObjC.unwrap($.NSURL.URLWithString(p).path);
+        if (/\.pdf$/i.test(p) &amp;&amp; !seen[p]) { paths.push(p); seen[p] = true; }
+    }
+    if (!paths.length) {
+        app.displayDialog('请在 Finder 中选中一个或多个 PDF 文件后运行。', {withTitle:'批量解除 PDF 密码', buttons:['好'], defaultButton:'好'});
+        return input;
+    }
+    var password;
+    try {
+        password = app.displayDialog('输入选中 PDF 的原密码（整批共用）。\n成功后覆盖原文件，之后打开不再需要密码。', {
+            withTitle:'批量解除 PDF 密码', defaultAnswer:'', hiddenAnswer:true,
+            buttons:['取消','解除密码'], defaultButton:'解除密码', cancelButton:'取消'
+        }).textReturned;
+    } catch (e) {
+        if (Number(e.errorNumber) === -128 || /cancel|取消|\(-128\)/i.test(String(e))) return input;
+        throw e;
+    }
+    var done = 0, failures = [];
+    paths.forEach(function(path) {
+        try { decryptPDF(path, password); done++; }
+        catch (e) { failures.push(ObjC.unwrap($(path).lastPathComponent) + '：' + e.message); }
+    });
+    password = null;
+    var summary = '成功解除密码并覆盖：' + done + ' 个文件。';
+    if (failures.length) summary += '\n\n未修改：' + failures.length + ' 个文件。\n' + failures.slice(0, 12).join('\n') + (failures.length &gt; 12 ? '\n……其余未列出' : '');
+    app.displayDialog(summary, {withTitle:'批量解除 PDF 密码', buttons:['完成'], defaultButton:'完成'});
+    return input;
+}
+</string>
+				</dict>
+				<key>BundleIdentifier</key>
+				<string>com.apple.Automator.RunJavaScript</string>
+				<key>CFBundleVersion</key>
+				<string>1.0</string>
+				<key>CanShowSelectedItemsWhenRun</key>
+				<false/>
+				<key>CanShowWhenRun</key>
+				<true/>
+				<key>Category</key>
+				<array>
+					<string>AMCategoryUtilities</string>
+				</array>
+				<key>Class Name</key>
+				<string>RunJavaScriptAction</string>
+				<key>InputUUID</key>
+				<string>d66ebb59-742a-4a8a-bda0-a35182cf9a0e</string>
+				<key>Keywords</key>
+				<array>
+					<string>运行</string>
+					<string>JavaScript</string>
+				</array>
+				<key>OutputUUID</key>
+				<string>23cdc3ef-1fef-4064-a765-4bf4aa8baefd</string>
+				<key>UUID</key>
+				<string>3c9b1f7a-af77-4ec2-be24-b714b5c275b3</string>
+				<key>UnlocalizedApplications</key>
+				<array>
+					<string>Automator</string>
+				</array>
+				<key>arguments</key>
+				<dict>
+					<key>0</key>
+					<dict>
+						<key>default value</key>
+						<string>function run(input, parameters) {
+
+	// Your script goes here
+
+	return input;
+}</string>
+						<key>name</key>
+						<string>source</string>
+						<key>required</key>
+						<string>0</string>
+						<key>type</key>
+						<string>0</string>
+						<key>uuid</key>
+						<string>0</string>
+					</dict>
+				</dict>
+				<key>isViewVisible</key>
+				<integer>1</integer>
+				<key>location</key>
+				<string>309.000000:368.000000</string>
+				<key>nibPath</key>
+				<string>/System/Library/Automator/Run JavaScript.action/Contents/Resources/Base.lproj/main.nib</string>
+			</dict>
+			<key>isViewVisible</key>
+			<integer>1</integer>
+		</dict>
+	</array>
+	<key>connectors</key>
+	<dict/>
+	<key>workflowMetaData</key>
+	<dict>
+		<key>applicationBundleID</key>
+		<string>com.apple.finder</string>
+		<key>applicationBundleIDsByPath</key>
+		<dict>
+			<key>/System/Library/CoreServices/Finder.app</key>
+			<string>com.apple.finder</string>
+		</dict>
+		<key>applicationPath</key>
+		<string>/System/Library/CoreServices/Finder.app</string>
+		<key>applicationPaths</key>
+		<array>
+			<string>/System/Library/CoreServices/Finder.app</string>
+		</array>
+		<key>inputTypeIdentifier</key>
+		<string>com.apple.Automator.fileSystemObject.PDF</string>
+		<key>outputTypeIdentifier</key>
+		<string>com.apple.Automator.nothing</string>
+		<key>presentationMode</key>
+		<integer>15</integer>
+		<key>processesInput</key>
+		<false/>
+		<key>serviceApplicationBundleID</key>
+		<string>com.apple.finder</string>
+		<key>serviceApplicationPath</key>
+		<string>/System/Library/CoreServices/Finder.app</string>
+		<key>serviceInputTypeIdentifier</key>
+		<string>com.apple.Automator.fileSystemObject.PDF</string>
+		<key>serviceOutputTypeIdentifier</key>
+		<string>com.apple.Automator.nothing</string>
+		<key>serviceProcessesInput</key>
+		<false/>
+		<key>systemImageName</key>
+		<string>NSActionTemplate</string>
+		<key>useAutomaticInputType</key>
+		<false/>
+		<key>workflowTypeIdentifier</key>
+		<string>com.apple.Automator.servicesMenu</string>
+	</dict>
+</dict>
+</plist>
